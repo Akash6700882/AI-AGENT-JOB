@@ -1,0 +1,18 @@
+{
+  "keywords": "api css data science",
+  "location": "",
+  "job_type": "",
+  "remote_only": true,
+  "min_match_score": 30.0,
+  "max_results": 50,
+  "auto_apply": false,
+  "daily_goal": 10,
+  "preferred_sources": [
+    "linkedin",
+    "indeed",
+    "remotive"
+  ],
+  "excluded_companies": [],
+  "salary_min": 0,
+  "salary_max": 0
+}
