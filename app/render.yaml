@@ -8,7 +8,10 @@ services:
   - type: web
     name: careerpilot-backend
     runtime: docker
-    rootDir: backend
+    # rootDir is relative to the repo root, not to this render.yaml file
+    # (which lives in app/) -- "backend" alone 404'd during sync ("Root
+    # directory 'backend' does not exist"); the real path is app/backend.
+    rootDir: app/backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
@@ -35,7 +38,8 @@ services:
   - type: web
     name: careerpilot-frontend
     runtime: docker
-    rootDir: .
+    # Same repo-root-relative rootDir gotcha as the backend service above.
+    rootDir: app
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
@@ -45,5 +49,9 @@ services:
       # so it must be the backend's real public URL. Render docker builds
       # forward service envVars as build ARGs automatically for matching
       # Dockerfile ARG names.
+      # Render appended a random suffix since the plain name collided with
+      # an existing service elsewhere on Render (confirmed via the API
+      # after backend was actually created) -- this is the real URL, not
+      # the plain https://careerpilot-backend.onrender.com guess.
       - key: VITE_API_URL
-        value: https://careerpilot-backend.onrender.com/api
+        value: https://careerpilot-backend-p6f5.onrender.com/api
