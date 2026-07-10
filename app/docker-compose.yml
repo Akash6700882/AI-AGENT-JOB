@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-careerpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your .env file}
+      POSTGRES_DB: ${POSTGRES_DB:-careerpilot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-careerpilot} -d ${POSTGRES_DB:-careerpilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - careerpilot_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # --appendonly yes enables AOF persistence so cached job-search results
+    # survive a container restart (Redis's default is in-memory only, which
+    # would silently lose everything on every `docker compose restart`).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - careerpilot_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-careerpilot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-careerpilot}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in your .env file, e.g. python -c 'import secrets; print(secrets.token_hex(32))'}"
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
+      # All optional — the app fails soft (see ai_agent.py, email_service.py)
+      # if these aren't set: AI enrichment/reasoning and real OTP email just
+      # stay disabled, rest of the app works unaffected.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+    ports:
+      - "${BACKEND_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - careerpilot_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # This is the address the BROWSER (on your host machine, not inside
+        # Docker) uses to reach the backend — so it's the published host
+        # port (localhost:8001), not the internal Docker network name
+        # (backend:8001), which the browser can't resolve.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001/api}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - careerpilot_net
+
+networks:
+  careerpilot_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -4,7 +4,7 @@ Job Matching Engine - Matches jobs with resume skills using scoring algorithms
 import re
 import math
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 from resume_parser import ResumeData
@@ -50,6 +50,11 @@ class MatchResult:
     matched_skills: List[str]
     missing_skills: List[str]
     related_skills: List[str]  # Skills the user has that are related to requirements
+    # Phase 0B: populated by ai_agent.py for the top-N results only (cost
+    # control — see agent.py::run_search). None means "not generated" —
+    # the normal state whenever AI is disabled, unavailable, or a job
+    # fell outside the top-N cutoff. It does not mean anything went wrong.
+    ai_reasoning: Optional[Dict] = None
 
 
 class JobMatcher:

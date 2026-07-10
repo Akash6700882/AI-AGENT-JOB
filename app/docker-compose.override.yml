@@ -1,0 +1,50 @@
+# Auto-loaded by `docker compose up` alongside docker-compose.yml whenever
+# this file sits next to it (no -f flag needed) — this is the standard
+# Compose convention for "base + local dev overrides". For a production
+# deploy, explicitly ignore this file:
+#   docker compose -f docker-compose.yml up --build
+#
+# What this changes vs. the base file:
+#   - backend runs with --reload against your live source (bind-mounted),
+#     instead of the fixed image built from a COPY at build time
+#   - frontend runs the actual Vite dev server (HMR) instead of the
+#     Nginx-served static production build
+#   - both expose the same ports you already use for local `python
+#     start_backend.py` / `npm run dev` — 8001 and 3000
+
+services:
+  backend:
+    build:
+      target: runtime
+    # Dev convenience: bypass the non-root user so bind-mounted files (owned
+    # by your host user, not the container's appuser) aren't a permissions
+    # headache. The production base file does NOT do this — runtime stays
+    # non-root there, this override only affects local `docker compose up`.
+    user: root
+    volumes:
+      - ./backend:/app
+    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+    # DATABASE_URL/REDIS_URL are inherited unchanged from docker-compose.yml
+    # — Postgres and Redis are already running as containers in this same
+    # stack, dev or not, so there's no reason to fall back to SQLite here.
+    # (The SQLite fallback in database.py is for running the backend
+    # completely outside Docker — e.g. `python start_backend.py` — which
+    # remains a separate, still-supported workflow of its own.)
+
+  frontend:
+    build:
+      target: dev
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tailwind.config.js:/app/tailwind.config.js
+      - ./postcss.config.js:/app/postcss.config.js
+      - ./components.json:/app/components.json
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-8001}/api
+    # No healthcheck override needed — the dev stage doesn't have Nginx's
+    # /health endpoint, and depends_on's service_healthy condition on
+    # backend (inherited from the base file) is enough for startup ordering.

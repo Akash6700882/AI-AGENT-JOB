@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, Sparkles, Mail, Phone, MapPin, Link, Code } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Sparkles, Mail, Phone, MapPin, Code } from 'lucide-react';
 
 interface ResumeUploadProps {
   agent: any;
@@ -208,4 +208,3 @@ export function ResumeUpload({ agent }: ResumeUploadProps) {
     </div>
   );
 }
-

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { Play, Square, LogOut } from 'lucide-react';
 
 interface TopBarProps {
   agent: any;
@@ -79,6 +79,20 @@ export function TopBar({ agent, currentView: _currentView, onViewChange }: TopBa
             </>
           )}
         </button>
+
+        {/* Phase 0C: current user + logout */}
+        <div className="flex items-center gap-2 pl-3 ml-1 border-l border-[#1E3A8A]/50">
+          <span className="hidden md:inline text-xs text-[#94A3B8]">
+            {agent.currentUser?.username}
+          </span>
+          <button
+            onClick={agent.logout}
+            title="Log out"
+            className="p-2 rounded-lg text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1E3A8A]/20 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

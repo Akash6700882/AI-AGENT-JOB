@@ -9,6 +9,7 @@ import { ApplicationsPanel } from '@/components/ApplicationsPanel';
 import { ResumeUpload } from '@/components/ResumeUpload';
 import { SearchPanel } from '@/components/SearchPanel';
 import { Toast } from '@/components/Toast';
+import { LoginForm } from '@/components/LoginForm';
 import type { JobResult } from '@/services/api';
 
 type View = 'dashboard' | 'jobs' | 'applications' | 'resume';
@@ -17,6 +18,13 @@ export default function Home() {
   const agent = useAgentContext();
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [, setSelectedJob] = useState<JobResult | null>(null);
+
+  // Phase 0C: every endpoint below requires auth now — gate the whole
+  // dashboard behind login rather than letting individual components
+  // hit 401s and show confusing empty states.
+  if (!agent.isAuthenticated) {
+    return <LoginForm agent={agent} />;
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#030712] overflow-hidden">
