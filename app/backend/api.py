@@ -166,6 +166,15 @@ def home():
     return {"status": "API running"}
 
 
+@app.get("/api/health")
+def health():
+    """Container healthcheck target — see backend/Dockerfile and
+    docker-compose.yml. Deliberately doesn't touch the database: a slow/down
+    DB should surface as failed requests, not flap the container's health
+    status and trigger restarts."""
+    return {"status": "ok"}
+
+
 # ── Auth (Phase 0C) ─────────────────────────────────────────────────────────────
 # Simple username/password + JWT. See auth.py for hashing/token details.
 

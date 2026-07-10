@@ -1,30 +1,38 @@
-# The backend lives in a subfolder of this same directory but is a
-# completely separate build context (see backend/Dockerfile) — excluding
-# it here keeps the frontend build context small and avoids ever copying
-# Python source, venvs, or backend secrets into the frontend image.
-backend/
+# Python
+__pycache__/
+__pychache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
 
-node_modules/
-dist/
-.vite/
+# Virtual environments (never bake a local venv into the image — the
+# Dockerfile builds its own inside the container)
+venv/
+.venv/
+env/
 
-# Local env files — VITE_API_URL etc. come from docker-compose build args,
-# not a baked-in .env inside the image
+# Local data / secrets — these must come from the environment or a mounted
+# volume at runtime, never baked into the image
 .env
 .env.*
 !.env.example
+data/
+temp_uploads/
+*.db
+applications.json
 
 # Editor / OS
 .vscode/
 .idea/
 .DS_Store
+tempCodeRunnerFile.py
+
+# Tests (not needed in the runtime image; add a separate CI step if you
+# want tests to run as part of the build pipeline instead)
+tests/
 
 # VCS
 .git/
 .gitignore
-
-# Misc project files not needed for the build
-*.md
-job-agent/
-AI-Job-Agent1/
-venv/

@@ -1,63 +1,57 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# Frontend Dockerfile — CareerPilot Agent UI (React + Vite + TypeScript)
+# Backend Dockerfile — CareerPilot Agent API (FastAPI + SQLAlchemy)
 #
 # Two stages:
-#   1. build  — Node, installs deps, runs the real production build
-#      (`tsc -b && vite build`, same as `npm run build`). Nothing from
-#      this stage ships in the final image.
-#   2. runtime — nginx-unprivileged serving the static dist/ output.
-#      Runs as a non-root user by default (that's the whole point of the
-#      "unprivileged" variant — official nginx:alpine listens on port 80,
-#      which requires root; this one listens on 8080 and doesn't).
-#
-# VITE_API_URL is a build ARG, not a runtime env var — Vite bakes
-# import.meta.env values into the JS bundle at build time, there's no
-# "read env vars at container startup" for a static SPA. Pass it via
-# docker-compose.yml's build.args if you need the built image to point
-# at a non-default backend address.
+#   1. build   — compiles/installs Python dependencies into a venv. gcc is
+#      needed here for a couple of compiled wheels (e.g. cryptography's
+#      transitive deps on some platforms); nothing from this stage ships
+#      in the final image.
+#   2. runtime — slim image with just the venv + source, running as a
+#      non-root user. docker-compose.override.yml explicitly targets this
+#      same stage for local dev (bind-mounting over it with --reload),
+#      which is why it must be named exactly "runtime".
 # =============================================================================
 
-# ---- Stage 0: dev (used only by docker-compose.override.yml, not production) ----
-# Runs the actual Vite dev server (HMR) against source bind-mounted from the
-# host — see docker-compose.override.yml. Not used by the production
-# `docker compose -f docker-compose.yml up` path at all.
-FROM node:20-alpine AS dev
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
-COPY . .
-EXPOSE 3000
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
-
-# ---- Stage 1: build ----
-FROM node:20-alpine AS build
+FROM python:3.12-slim AS build
 
 WORKDIR /app
 
-# Dependency manifests copied and installed before the rest of the source
-# so `npm ci` is cached across rebuilds that only change application code.
-COPY package.json package-lock.json* ./
-RUN npm ci
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+# --default-timeout/--retries: this build has hit read timeouts against
+# PyPI on slower connections (large wheels like cryptography/psycopg2)
+# with pip's default 15s timeout; both flags only affect this build step.
+RUN python -m venv /venv \
+    && /venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /venv/bin/pip install --no-cache-dir --default-timeout=120 --retries=5 -r requirements.txt
+
+# ---- Stage: runtime ----
+FROM python:3.12-slim AS runtime
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+COPY --from=build /venv /venv
+ENV PATH="/venv/bin:$PATH"
 
 COPY . .
 
-ARG VITE_API_URL
-ENV VITE_API_URL=${VITE_API_URL}
+# data/ and temp_uploads/ are created here (not baked with content — see
+# .dockerignore) so the non-root user owns them before any request tries
+# to write into them.
+RUN mkdir -p /app/data /app/temp_uploads && chown -R appuser:appuser /app
 
-RUN npm run build
+USER appuser
 
-# ---- Stage 2: runtime ----
-FROM nginxinc/nginx-unprivileged:alpine AS runtime
+EXPOSE 8001
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/health', timeout=3).status == 200 else 1)"
 
-EXPOSE 8080
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget -q -O - http://localhost:8080/health || exit 1
-
-# nginxinc/nginx-unprivileged's default CMD already runs nginx in the
-# foreground as the built-in unprivileged `nginx` user — no override needed.
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001"]

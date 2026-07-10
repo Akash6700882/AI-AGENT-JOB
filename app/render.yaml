@@ -1,0 +1,49 @@
+databases:
+  - name: careerpilot-db
+    databaseName: careerpilot
+    user: careerpilot
+    plan: free
+
+services:
+  - type: web
+    name: careerpilot-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: careerpilot-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_EXPIRE_MINUTES
+        value: "10080"
+      # Optional / fail-soft (see ai_agent.py, email_service.py) — the app
+      # runs fine without these, just with AI enrichment and real OTP email
+      # disabled. Set real values in the Render dashboard if you want them.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: onboarding@resend.dev
+
+  - type: web
+    name: careerpilot-frontend
+    runtime: docker
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Build-time ARG (see Dockerfile) — baked into the static JS bundle,
+      # so it must be the backend's real public URL. Render docker builds
+      # forward service envVars as build ARGs automatically for matching
+      # Dockerfile ARG names.
+      - key: VITE_API_URL
+        value: https://careerpilot-backend.onrender.com/api

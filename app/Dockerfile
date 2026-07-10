@@ -26,7 +26,11 @@
 FROM node:20-alpine AS dev
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# --include=dev: explicit regardless of any NODE_ENV the environment sets —
+# typescript/vite (needed for `tsc -b && vite build` below, and for the dev
+# stage's `npm run dev`) live in devDependencies, and a production-mode
+# npm ci silently omits them, failing later with "tsc: not found".
+RUN npm ci --include=dev
 COPY . .
 EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
@@ -39,7 +43,11 @@ WORKDIR /app
 # Dependency manifests copied and installed before the rest of the source
 # so `npm ci` is cached across rebuilds that only change application code.
 COPY package.json package-lock.json* ./
-RUN npm ci
+# --include=dev: explicit regardless of any NODE_ENV the environment sets —
+# typescript/vite (needed for `tsc -b && vite build` below, and for the dev
+# stage's `npm run dev`) live in devDependencies, and a production-mode
+# npm ci silently omits them, failing later with "tsc: not found".
+RUN npm ci --include=dev
 
 COPY . .
 
