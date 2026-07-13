@@ -3,12 +3,13 @@ import {
   Search,
   ClipboardList,
   FileText,
+  Sparkles,
   Bot,
 } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
-  onViewChange: (view: 'dashboard' | 'jobs' | 'applications' | 'resume') => void;
+  onViewChange: (view: 'dashboard' | 'jobs' | 'applications' | 'resume' | 'tools') => void;
   agent: any;
 }
 
@@ -17,6 +18,7 @@ const navItems = [
   { id: 'jobs' as const, icon: Search, label: 'Find Jobs' },
   { id: 'applications' as const, icon: ClipboardList, label: 'Applications' },
   { id: 'resume' as const, icon: FileText, label: 'Resume' },
+  { id: 'tools' as const, icon: Sparkles, label: 'AI Tools' },
 ];
 
 export function Sidebar({ currentView, onViewChange, agent }: SidebarProps) {

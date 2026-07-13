@@ -9,9 +9,11 @@ export function useAgent() {
   const [applications, setApplications] = useState<any[]>([]);
   const [resume, setResume] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>({});
+  const [weeklyActivity, setWeeklyActivity] = useState<any[]>([]);
 
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   // ===============================
   // 🔐 AUTH (Phase 0C)
@@ -37,65 +39,91 @@ export function useAgent() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, [token]);
 
-  const login = async (username: string, password: string) => {
+  // Shared POST helper for every auth endpoint below — they all follow the
+  // same shape (JSON body, JSON {success/access_token/...} or {detail}
+  // error response), so this is the one place that owns auth loading/error
+  // state and FastAPI's array-shaped 422 validation errors.
+  const authRequest = async (path: string, body: Record<string, any>) => {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const res = await fetch(`${API}/auth/login`, {
+      const res = await fetch(`${API}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok || !data.access_token) {
-        setAuthError(data.detail || "Login failed.");
-        return false;
+      if (!res.ok) {
+        const detail = Array.isArray(data.detail)
+          ? data.detail.map((d: any) => d.msg).join(", ")
+          : data.detail;
+        setAuthError(detail || "Something went wrong.");
+        return null;
       }
-      setToken(data.access_token);
-      setCurrentUser(data.user);
-      localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-      return true;
+      return data;
     } catch (err) {
-      console.error("Login error:", err);
+      console.error(`Auth request (${path}) failed:`, err);
       setAuthError("Could not reach the server. Is the backend running?");
-      return false;
+      return null;
     } finally {
       setAuthLoading(false);
     }
   };
 
-  const register = async (username: string, email: string, password: string) => {
-    setAuthLoading(true);
-    setAuthError(null);
-    try {
-      const res = await fetch(`${API}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.access_token) {
-        // FastAPI validation errors (422) come back as data.detail = [...]
-        // rather than a plain string — flatten that into something readable.
-        const detail = Array.isArray(data.detail)
-          ? data.detail.map((d: any) => d.msg).join(", ")
-          : data.detail;
-        setAuthError(detail || "Registration failed.");
-        return false;
-      }
-      setToken(data.access_token);
-      setCurrentUser(data.user);
-      localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-      return true;
-    } catch (err) {
-      console.error("Register error:", err);
-      setAuthError("Could not reach the server. Is the backend running?");
-      return false;
-    } finally {
-      setAuthLoading(false);
-    }
+  const _persistSession = (data: any) => {
+    setToken(data.access_token);
+    setCurrentUser(data.user);
+    localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+  };
+
+  const login = async (identifier: string, password: string) => {
+    const data = await authRequest("/auth/login", { identifier, password });
+    if (!data?.access_token) return false;
+    _persistSession(data);
+    return true;
+  };
+
+  // ===============================
+  // ✉️ REGISTRATION (email OTP-gated, 3 steps)
+  // ===============================
+  const sendRegisterOtp = async (email: string) => {
+    const data = await authRequest("/auth/register/send-otp", { email });
+    return !!data?.success;
+  };
+
+  const verifyRegisterOtp = async (email: string, otp: string): Promise<string | null> => {
+    const data = await authRequest("/auth/register/verify-otp", { email, otp });
+    return data?.verification_token || null;
+  };
+
+  const completeRegister = async (verificationToken: string, username: string, password: string) => {
+    const data = await authRequest("/auth/register", {
+      verification_token: verificationToken, username, password,
+    });
+    if (!data?.access_token) return false;
+    _persistSession(data);
+    return true;
+  };
+
+  // ===============================
+  // 🔑 FORGOT PASSWORD (email OTP-gated, 3 steps)
+  // ===============================
+  const sendResetOtp = async (email: string) => {
+    const data = await authRequest("/auth/forgot-password/send-otp", { email });
+    return !!data?.success;
+  };
+
+  const verifyResetOtp = async (email: string, otp: string): Promise<string | null> => {
+    const data = await authRequest("/auth/forgot-password/verify-otp", { email, otp });
+    return data?.reset_token || null;
+  };
+
+  const resetPassword = async (resetToken: string, newPassword: string, confirmPassword: string) => {
+    const data = await authRequest("/auth/reset-password", {
+      reset_token: resetToken, new_password: newPassword, confirm_password: confirmPassword,
+    });
+    return !!data?.success;
   };
 
   const logout = () => {
@@ -112,6 +140,8 @@ export function useAgent() {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
   };
+
+  const clearAuthError = () => setAuthError(null);
 
   // ===============================
   // 📄 UPLOAD RESUME
@@ -243,6 +273,104 @@ export function useAgent() {
   };
 
   // ===============================
+  // 🗑️ DELETE APPLICATION
+  // ===============================
+  const deleteApplication = async (appId: string) => {
+    try {
+      const res = await fetch(`${API}/applications/${encodeURIComponent(appId)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      // refresh applications after deleting
+      loadApplications();
+      return data;
+    } catch (err) {
+      console.error("Delete application failed:", err);
+    }
+  };
+
+  // ===============================
+  // 📈 WEEKLY ACTIVITY
+  // ===============================
+  const loadWeeklyActivity = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API}/weekly-activity`, { headers: authHeaders() });
+      const data = await res.json();
+      setWeeklyActivity(data.weekly_activity || []);
+    } catch (err) {
+      console.error("Weekly activity error:", err);
+    }
+  };
+
+  // ===============================
+  // ✨ CONTENT GENERATION (Phase 0E)
+  // Cover letter / tailored resume / cold DM / interview prep / follow-up.
+  // Shared POST helper — all five endpoints take the same job_title/company/
+  // job_description shape and return {success, content, generated_by}.
+  // ===============================
+  const generateContent = async (endpoint: string, params: Record<string, any>) => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`${API}/generate/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.detail || "Generation failed." };
+      }
+      return data;
+    } catch (err) {
+      console.error(`Generate (${endpoint}) failed:`, err);
+      return { success: false, error: "Could not reach the server." };
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateTailoredResume = (params: { job_title: string; company?: string; job_description?: string }) =>
+    generateContent("resume", params);
+
+  const generateCoverLetter = (params: { job_title: string; company?: string; job_description?: string; tone?: string }) =>
+    generateContent("cover-letter", params);
+
+  const generateColdDM = (params: { job_title: string; company?: string; job_description?: string; platform?: string }) =>
+    generateContent("cold-dm", params);
+
+  const generateInterviewPrep = (params: { job_title: string; company?: string; job_description?: string }) =>
+    generateContent("interview-prep", params);
+
+  const generateFollowUp = (params: { job_title: string; company?: string; job_description?: string; stage?: string }) =>
+    generateContent("follow-up", params);
+
+  // ===============================
+  // 🎯 STANDALONE JOB SCORER
+  // ===============================
+  const scoreJob = async (params: { job_title: string; company?: string; job_description: string; location?: string; remote?: boolean }) => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`${API}/score-job`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.detail || "Scoring failed." };
+      }
+      return data;
+    } catch (err) {
+      console.error("Score job failed:", err);
+      return { success: false, error: "Could not reach the server." };
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // ===============================
   // 🔄 AUTO LOAD ON START / ON LOGIN
   // ===============================
   useEffect(() => {
@@ -252,6 +380,7 @@ export function useAgent() {
     if (token) {
       loadResume();
       loadApplications();
+      loadWeeklyActivity();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -264,9 +393,11 @@ export function useAgent() {
     applications: applications || [],
     resume: resume || null,
     statistics: statistics || {},
+    weeklyActivity: weeklyActivity || [],
 
     searching,
     loading,
+    generating,
 
     // Auth (Phase 0C)
     isAuthenticated,
@@ -274,13 +405,29 @@ export function useAgent() {
     authError,
     authLoading,
     login,
-    register,
     logout,
+    clearAuthError,
+    sendRegisterOtp,
+    verifyRegisterOtp,
+    completeRegister,
+    sendResetOtp,
+    verifyResetOtp,
+    resetPassword,
 
     uploadResume,
     loadResume,
     searchJobs,
     loadApplications,
     applyToJob,
+    deleteApplication,
+    loadWeeklyActivity,
+
+    // Content generation (Phase 0E)
+    generateTailoredResume,
+    generateCoverLetter,
+    generateColdDM,
+    generateInterviewPrep,
+    generateFollowUp,
+    scoreJob,
   };
 }

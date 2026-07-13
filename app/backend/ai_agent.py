@@ -273,12 +273,17 @@ class CareerPilotLLM:
 
     # -- internals --------------------------------------------------------
 
-    def _call_json(self, system: str, user: str, max_tokens: int = 500) -> Optional[Dict[str, Any]]:
-        """Calls the model, requiring a JSON-only response, and parses it.
-        Returns None on any failure — callers must treat None as "fall
-        back", never as an error to propagate. Never logs `system`, `user`,
-        or the raw response text: those carry resume/job content (names,
-        emails, employers) that shouldn't end up in application logs."""
+    def _call_raw(self, system: str, user: str, max_tokens: int = 500, temperature: Optional[float] = None) -> Optional[str]:
+        """Calls the model and returns the raw text response, or None on any
+        failure — callers must treat None as "fall back", never as an error
+        to propagate. Never logs `system`, `user`, or the raw response text:
+        those carry resume/job content (names, emails, employers) that
+        shouldn't end up in application logs.
+
+        Shared by _call_json (structured extraction/classification) and
+        _call_text (free-form prose generation, see content_generator.py) —
+        both need identical request/error/usage-logging handling and differ
+        only in what they do with the text afterward."""
         if not self.enabled:
             return None
 
@@ -286,7 +291,7 @@ class CareerPilotLLM:
             resp = self.client.messages.create(
                 model=self.model,
                 max_tokens=max_tokens,
-                temperature=self.temperature,
+                temperature=self.temperature if temperature is None else temperature,
                 system=system,
                 messages=[{"role": "user", "content": user}],
             )
@@ -315,9 +320,16 @@ class CareerPilotLLM:
         except Exception:
             pass
 
-        text = "".join(
+        return "".join(
             block.text for block in resp.content if getattr(block, "type", "") == "text"
         ).strip()
+
+    def _call_json(self, system: str, user: str, max_tokens: int = 500) -> Optional[Dict[str, Any]]:
+        """Calls the model, requiring a JSON-only response, and parses it.
+        Returns None on any failure — see _call_raw for why."""
+        text = self._call_raw(system, user, max_tokens=max_tokens)
+        if text is None:
+            return None
 
         # Models occasionally wrap JSON in a fenced code block despite
         # instructions not to — strip that defensively rather than fail.
@@ -337,6 +349,14 @@ class CareerPilotLLM:
             return None
 
     # -- public methods -----------------------------------------------------
+
+    def generate_text(self, system: str, user: str, max_tokens: int = 500, temperature: Optional[float] = None) -> Optional[str]:
+        """Calls the model for free-form prose (cover letters, emails, etc.)
+        rather than structured JSON. Returns None on any failure — see
+        _call_raw for why. Public because content_generator.py's generators
+        call this directly rather than duplicating a second Anthropic client."""
+        text = self._call_raw(system, user, max_tokens=max_tokens, temperature=temperature)
+        return text or None
 
     def enrich_resume(self, resume, source_hash: str = "") -> ResumeEnrichment:
         """resume: ResumeData instance from resume_parser.py.

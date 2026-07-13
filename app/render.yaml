@@ -30,10 +30,10 @@ services:
       # disabled. Set real values in the Render dashboard if you want them.
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: RESEND_API_KEY
+      - key: GMAIL_ADDRESS
         sync: false
-      - key: RESEND_FROM_EMAIL
-        value: onboarding@resend.dev
+      - key: GMAIL_APP_PASSWORD
+        sync: false
 
   - type: web
     name: careerpilot-frontend

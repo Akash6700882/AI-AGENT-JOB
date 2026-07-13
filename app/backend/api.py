@@ -5,6 +5,7 @@ import os
 import re
 import logging
 import traceback
+from datetime import datetime, timedelta
 
 # Phase 0B: load a local .env file if present, so ANTHROPIC_API_KEY etc.
 # don't have to be exported manually every session. No-op in prod if you're
@@ -18,16 +19,22 @@ except ImportError:
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from agent import get_agent
 from database import get_db, init_db
-from models import User
+from models import User, EmailVerification
 from auth import (
-    hash_password, verify_password, create_access_token, get_current_user
+    hash_password, verify_password, create_access_token, get_current_user,
+    generate_otp, hash_otp, verify_otp_hash,
+    create_email_verification_token, decode_email_verification_token,
 )
+from job_search import JobListing
+from job_matcher import JobMatcher
+import content_generator as gen
+import email_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("careerpilot.api")
@@ -107,9 +114,48 @@ class StatusUpdate(BaseModel):
         return v
 
 
-class RegisterRequest(BaseModel):
-    username: str
+OTP_PATTERN = re.compile(r"^\d{6}$")
+
+
+class SendOtpRequest(BaseModel):
     email: str
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if not EMAIL_PATTERN.match(v):
+            raise ValueError("invalid email address")
+        return v
+
+
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v: str) -> str:
+        return (v or "").strip().lower()
+
+    @field_validator("otp")
+    @classmethod
+    def otp_valid(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not OTP_PATTERN.match(v):
+            raise ValueError("code must be 6 digits")
+        return v
+
+
+class RegisterRequest(BaseModel):
+    """Completes registration after the email has already been proven via
+    the send-otp / verify-otp steps below — verification_token is what
+    verify-otp returned, and carries the verified email (see
+    auth.py's create_email_verification_token/decode_email_verification_token).
+    There's no raw `email` field here on purpose: the only email this
+    endpoint will ever use is the one embedded in that token."""
+    verification_token: str
+    username: str
     password: str
 
     @field_validator("username")
@@ -117,13 +163,6 @@ class RegisterRequest(BaseModel):
     def username_valid(cls, v: str) -> str:
         if not USERNAME_PATTERN.match(v or ""):
             raise ValueError("username must be 3-32 characters: letters, numbers, underscore, dot, hyphen only")
-        return v
-
-    @field_validator("email")
-    @classmethod
-    def email_valid(cls, v: str) -> str:
-        if not EMAIL_PATTERN.match(v or ""):
-            raise ValueError("invalid email address")
         return v
 
     @field_validator("password")
@@ -138,8 +177,139 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    identifier: str  # username OR email
     password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str
+    confirm_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_valid(cls, v: str) -> str:
+        if len(v or "") < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "ResetPasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("passwords do not match")
+        return self
+
+
+# -- OTP issue/consume helpers ------------------------------------------------
+# Shared by registration and forgot-password, which both just need "prove
+# control of this email inbox right now" — see EmailVerification's docstring
+# in models.py. One live OTP per email at a time regardless of which flow
+# requested it.
+
+OTP_EXPIRE_MINUTES = 5
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_LIMIT = 3
+OTP_RESEND_WINDOW_MINUTES = 15
+
+
+def _issue_otp(db: Session, email: str) -> None:
+    now = datetime.utcnow()
+    row = db.query(EmailVerification).filter(EmailVerification.email == email).first()
+
+    if row:
+        window_active = now - row.resend_window_start < timedelta(minutes=OTP_RESEND_WINDOW_MINUTES)
+        if window_active:
+            if row.resend_count >= OTP_RESEND_LIMIT:
+                raise HTTPException(status_code=429, detail="Too many codes requested. Please try again in a few minutes.")
+            row.resend_count += 1
+        else:
+            row.resend_count = 1
+            row.resend_window_start = now
+
+    otp = generate_otp()
+    expires_at = now + timedelta(minutes=OTP_EXPIRE_MINUTES)
+
+    if row:
+        row.hashed_otp = hash_otp(otp)
+        row.expires_at = expires_at
+        row.attempts = 0
+        row.verified = False
+    else:
+        row = EmailVerification(
+            email=email, hashed_otp=hash_otp(otp), expires_at=expires_at,
+            attempts=0, verified=False, resend_count=1, resend_window_start=now,
+        )
+        db.add(row)
+
+    db.commit()
+
+    if not email_service.send_otp_email(email, otp):
+        raise HTTPException(status_code=500, detail="Failed to send verification email. Please try again.")
+
+
+def _consume_otp(db: Session, email: str, otp: str) -> None:
+    """Raises on any failure; deletes the row on success (see
+    EmailVerification's docstring — it's not a permanent record)."""
+    row = db.query(EmailVerification).filter(EmailVerification.email == email).first()
+    invalid = HTTPException(status_code=400, detail="Invalid or expired code.")
+    if not row:
+        raise invalid
+    if datetime.utcnow() > row.expires_at:
+        db.delete(row)
+        db.commit()
+        raise invalid
+    if row.attempts >= OTP_MAX_ATTEMPTS:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please request a new code.")
+    if not verify_otp_hash(otp, row.hashed_otp):
+        row.attempts += 1
+        db.commit()
+        raise invalid
+    db.delete(row)
+    db.commit()
+
+
+class GenerateRequest(BaseModel):
+    """Shared request shape for every content-generation endpoint below
+    (cover letter, tailored resume, cold DM, interview prep, follow-up).
+    job_title/company/job_description describe the target job — callers
+    typically pass these straight from a previously-searched job result,
+    but a pasted-in description also works, so these tools aren't limited
+    to jobs that came from a search."""
+    job_title: str = ""
+    company: str = ""
+    job_description: str = ""
+    # Only meaningful for specific endpoints (cover letter: tone,
+    # cold DM: platform, follow-up: stage) — unused fields are ignored by
+    # the endpoints that don't need them.
+    tone: str = "professional"
+    platform: str = "linkedin"
+    stage: str = "post_application"
+
+    @field_validator("job_title")
+    @classmethod
+    def job_title_not_blank(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("job_title cannot be blank")
+        return v
+
+
+class ScoreJobRequest(BaseModel):
+    job_title: str = ""
+    company: str = ""
+    job_description: str = ""
+    location: str = ""
+    remote: bool = False
+
+    @field_validator("job_description")
+    @classmethod
+    def job_description_not_blank(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("job_description cannot be blank")
+        return v
 
 
 # ── Global error handling ──────────────────────────────────────────────────────
@@ -176,12 +346,32 @@ def health():
 
 
 # ── Auth (Phase 0C) ─────────────────────────────────────────────────────────────
-# Simple username/password + JWT. See auth.py for hashing/token details.
+# Username/email + password + JWT, with OTP-gated email verification on
+# registration and OTP-based password reset. See auth.py for hashing/token/
+# OTP-crypto details, and email_service.py for delivery.
+
+@app.post("/api/auth/register/send-otp")
+def register_send_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == req.email).first():
+        raise HTTPException(status_code=400, detail="That email is already registered.")
+    _issue_otp(db, req.email)
+    return {"success": True, "message": "Verification code sent to your email."}
+
+
+@app.post("/api/auth/register/verify-otp")
+def register_verify_otp(req: VerifyOtpRequest, db: Session = Depends(get_db)):
+    _consume_otp(db, req.email, req.otp)
+    return {"success": True, "verification_token": create_email_verification_token(req.email)}
+
 
 @app.post("/api/auth/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    email = decode_email_verification_token(req.verification_token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Your verification session expired. Please verify your email again.")
+
     existing = db.query(User).filter(
-        (User.username == req.username) | (User.email == req.email)
+        (User.username == req.username) | (User.email == email)
     ).first()
     if existing:
         field = "username" if existing.username == req.username else "email"
@@ -189,7 +379,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
     user = User(
         username=req.username,
-        email=req.email,
+        email=email,
         password_hash=hash_password(req.password),
     )
     db.add(user)
@@ -211,10 +401,13 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/auth/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == req.username).first()
+    identifier = (req.identifier or "").strip()
+    user = db.query(User).filter(
+        (User.username == identifier) | (User.email == identifier.lower())
+    ).first()
     # Deliberately identical error for "no such user" and "wrong password" —
-    # distinguishing them lets an attacker enumerate valid usernames.
-    invalid = HTTPException(status_code=401, detail="Incorrect username or password.")
+    # distinguishing them lets an attacker enumerate valid usernames/emails.
+    invalid = HTTPException(status_code=401, detail="Incorrect username/email or password.")
     if not user or not verify_password(req.password, user.password_hash):
         raise invalid
 
@@ -225,6 +418,37 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": {"id": user.id, "username": user.username, "email": user.email},
     }
+
+
+@app.post("/api/auth/forgot-password/send-otp")
+def forgot_password_send_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
+    # Same response whether or not the email has an account — otherwise
+    # this endpoint becomes an account-enumeration oracle. Only actually
+    # issues a code when an account exists.
+    if db.query(User).filter(User.email == req.email).first():
+        _issue_otp(db, req.email)
+    return {"success": True, "message": "If that email is registered, a verification code has been sent."}
+
+
+@app.post("/api/auth/forgot-password/verify-otp")
+def forgot_password_verify_otp(req: VerifyOtpRequest, db: Session = Depends(get_db)):
+    _consume_otp(db, req.email, req.otp)
+    return {"success": True, "reset_token": create_email_verification_token(req.email)}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+    email = decode_email_verification_token(req.reset_token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Your reset session expired. Please request a new code.")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Account not found.")
+
+    user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"success": True}
 
 
 @app.get("/api/auth/me")
@@ -469,6 +693,110 @@ async def delete_application(app_id: str, current_user: User = Depends(get_curre
     if not ok:
         raise HTTPException(status_code=404, detail="Application not found")
     return {"success": True}
+
+
+@app.get("/api/weekly-activity")
+def get_weekly_activity(current_user: User = Depends(get_current_user)):
+    """FIX: tracker.get_weekly_activity() has always existed and worked,
+    but no route ever exposed it — the frontend's Weekly Activity chart
+    fell back to hardcoded fake data unconditionally as a result."""
+    agent = get_agent(current_user.id)
+    return {"success": True, "weekly_activity": agent.tracker.get_weekly_activity()}
+
+
+# ── Content generation (Phase 0E) ────────────────────────────────────────────
+# Cover letter / tailored resume / cold DM / interview prep / follow-up email.
+# All five share the same shape: require a loaded resume, build resume+job
+# dicts, hand off to content_generator.py (which fails soft to a template
+# if no ANTHROPIC_API_KEY is configured), and return {success, content,
+# generated_by}.
+
+def _require_resume_dict(current_user: User) -> dict:
+    """Loads current_user's resume (from memory or DB) and returns it as a
+    plain dict for content_generator.py. Raises 400 if none exists yet —
+    every generator needs real candidate facts to ground its output in."""
+    agent = get_agent(current_user.id)
+    if not agent.resume:
+        agent.load_saved_resume()
+    if not agent.resume:
+        raise HTTPException(status_code=400, detail="No resume uploaded yet. Please upload a resume first.")
+    return agent.resume.to_dict()
+
+
+def _job_dict(req: GenerateRequest) -> dict:
+    return {"title": req.job_title, "company": req.company, "description": req.job_description}
+
+
+@app.post("/api/generate/resume")
+async def generate_resume(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+    resume = _require_resume_dict(current_user)
+    result = gen.generate_tailored_resume(resume, _job_dict(req))
+    return {"success": True, **result.to_dict()}
+
+
+@app.post("/api/generate/cover-letter")
+async def generate_cover_letter_route(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+    resume = _require_resume_dict(current_user)
+    result = gen.generate_cover_letter(resume, _job_dict(req), tone=req.tone)
+    return {"success": True, **result.to_dict()}
+
+
+@app.post("/api/generate/cold-dm")
+async def generate_cold_dm_route(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+    resume = _require_resume_dict(current_user)
+    result = gen.generate_cold_dm(resume, _job_dict(req), platform=req.platform)
+    return {"success": True, **result.to_dict()}
+
+
+@app.post("/api/generate/interview-prep")
+async def generate_interview_prep_route(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+    resume = _require_resume_dict(current_user)
+    result = gen.generate_interview_prep(resume, _job_dict(req))
+    return {"success": True, **result.to_dict()}
+
+
+@app.post("/api/generate/follow-up")
+async def generate_follow_up_route(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+    resume = _require_resume_dict(current_user)
+    result = gen.generate_follow_up_email(resume, _job_dict(req), stage=req.stage)
+    return {"success": True, **result.to_dict()}
+
+
+# ── Standalone job scorer ────────────────────────────────────────────────────
+
+@app.post("/api/score-job")
+async def score_job(req: ScoreJobRequest, current_user: User = Depends(get_current_user)):
+    """Scores a pasted-in job description against the user's resume using
+    the same rule-based JobMatcher already used during search — this just
+    exposes it as a standalone tool for a job that wasn't found via search
+    (e.g. pasted from a company's own careers page)."""
+    agent = get_agent(current_user.id)
+    if not agent.resume:
+        agent.load_saved_resume()
+    if not agent.resume:
+        raise HTTPException(status_code=400, detail="No resume uploaded yet. Please upload a resume first.")
+
+    job = JobListing(
+        id="manual",
+        title=req.job_title,
+        company=req.company,
+        location=req.location,
+        description=req.job_description,
+        remote=req.remote,
+        source="manual",
+    )
+    result = JobMatcher().match_single_job(agent.resume, job)
+    return {
+        "success": True,
+        "overall_score": round(result.overall_score, 1),
+        "skill_match_score": round(result.skill_match_score, 1),
+        "title_match_score": round(result.title_match_score, 1),
+        "experience_match_score": round(result.experience_match_score, 1),
+        "location_match_score": round(result.location_match_score, 1),
+        "matched_skills": result.matched_skills,
+        "missing_skills": result.missing_skills,
+        "related_skills": result.related_skills,
+    }
 
 
 # ── Status & config ───────────────────────────────────────────────────────────

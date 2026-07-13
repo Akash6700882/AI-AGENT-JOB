@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Play, Square, LogOut } from 'lucide-react';
+import { Play, Square, LogOut, LogIn } from 'lucide-react';
 
 interface TopBarProps {
   agent: any;
   currentView?: string;
   onViewChange: (view: 'dashboard' | 'jobs' | 'applications' | 'resume') => void;
+  onLoginClick?: () => void;
 }
 
-export function TopBar({ agent, currentView: _currentView, onViewChange }: TopBarProps) {
+export function TopBar({ agent, currentView: _currentView, onViewChange, onLoginClick }: TopBarProps) {
   void _currentView;
   const [isSearching, setIsSearching] = useState(false);
 
@@ -80,18 +81,30 @@ export function TopBar({ agent, currentView: _currentView, onViewChange }: TopBa
           )}
         </button>
 
-        {/* Phase 0C: current user + logout */}
+        {/* Phase 0C: current user + logout, or a Login CTA when signed out */}
         <div className="flex items-center gap-2 pl-3 ml-1 border-l border-[#1E3A8A]/50">
-          <span className="hidden md:inline text-xs text-[#94A3B8]">
-            {agent.currentUser?.username}
-          </span>
-          <button
-            onClick={agent.logout}
-            title="Log out"
-            className="p-2 rounded-lg text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1E3A8A]/20 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          {agent.isAuthenticated ? (
+            <>
+              <span className="hidden md:inline text-xs text-[#94A3B8]">
+                {agent.currentUser?.username}
+              </span>
+              <button
+                onClick={agent.logout}
+                title="Log out"
+                className="p-2 rounded-lg text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1E3A8A]/20 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onLoginClick}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 hover:bg-[#10B981]/20 transition-colors"
+            >
+              <LogIn className="w-4 h-4" />
+              Login
+            </button>
+          )}
         </div>
       </div>
     </div>

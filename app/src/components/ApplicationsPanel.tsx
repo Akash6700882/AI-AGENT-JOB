@@ -175,6 +175,7 @@ export function ApplicationsPanel({ agent }: ApplicationsPanelProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              agent.deleteApplication(app.id);
                             }}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded-lg text-xs hover:bg-[#EF4444]/20 transition-all"
                           >
