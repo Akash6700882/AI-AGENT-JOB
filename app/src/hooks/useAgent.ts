@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "http://127.0.0.1:8001/api";
+// VITE_API_URL is baked in at build time (see Dockerfile/render.yaml) so the
+// deployed frontend calls the deployed backend instead of a dev-only
+// localhost address that doesn't exist in the browser's network.
+const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001/api";
 const TOKEN_STORAGE_KEY = "careerpilot_token";
 const USER_STORAGE_KEY = "careerpilot_user";
 
