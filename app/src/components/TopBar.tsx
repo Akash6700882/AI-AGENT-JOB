@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Play, Square, LogOut, LogIn } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
+
 interface TopBarProps {
   agent: any;
   currentView?: string;
@@ -25,15 +27,15 @@ export function TopBar({ agent, currentView: _currentView, onViewChange, onLogin
   };
 
   return (
-    <div className="h-16 border-b border-[#1E3A8A]/50 bg-[#0A1128]/80 backdrop-blur-sm flex items-center justify-between px-8 flex-shrink-0 z-10">
+    <div className="h-16 border-b bg-card/80 backdrop-blur-sm flex items-center justify-between px-8 flex-shrink-0 z-10">
       {/* Left - Brand + Status */}
       <div className="flex items-center gap-4">
-        <h1 className="text-xl font-bold text-[#F8FAFC] tracking-tight">
+        <h1 className="text-xl font-bold tracking-tight">
           Career<span className="text-gradient-green">Pilot</span>
         </h1>
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/30">
-          <div className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse-green" />
-          <span className="text-xs font-mono-data text-[#10B981] uppercase tracking-wider">
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/30">
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse-green" />
+          <span className="text-xs font-mono-data text-primary uppercase tracking-wider">
             {agent?.searching ? 'Scanning...' : 'Agent Online'}
           </span>
         </div>
@@ -44,29 +46,29 @@ export function TopBar({ agent, currentView: _currentView, onViewChange, onLogin
         {/* Stats Summary */}
         <div className="hidden md:flex items-center gap-4 mr-4">
           <div className="text-center">
-            <div className="text-sm font-mono-data font-semibold text-[#10B981]">
+            <div className="text-sm font-mono-data font-semibold text-primary">
               {agent?.jobs?.length || 0}
             </div>
-            <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Matches</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Matches</div>
           </div>
-          <div className="w-px h-8 bg-[#1E3A8A]" />
+          <div className="w-px h-8 bg-border" />
           <div className="text-center">
-            <div className="text-sm font-mono-data font-semibold text-[#10B981]">
+            <div className="text-sm font-mono-data font-semibold text-primary">
               {agent.applications?.length || 0}
             </div>
-            <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Applied</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Applied</div>
           </div>
         </div>
 
         {/* Initiate Search Button */}
-        <button
+        <Button
           onClick={handleQuickSearch}
           disabled={isSearching || agent.searching}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-all duration-300
-            ${isSearching || agent.searching
-              ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30 cursor-not-allowed'
-              : 'bg-[#10B981] text-[#030712] hover:bg-[#34D399] hover:scale-105 active:scale-95 glow-green'
-            }`}
+          className={`rounded-full font-semibold ${
+            isSearching || agent.searching
+              ? 'bg-accent/20 text-accent border border-accent/30 hover:bg-accent/20 cursor-not-allowed'
+              : 'glow-green hover:scale-105 active:scale-95'
+          }`}
         >
           {isSearching || agent.searching ? (
             <>
@@ -79,31 +81,43 @@ export function TopBar({ agent, currentView: _currentView, onViewChange, onLogin
               Initiate Search
             </>
           )}
-        </button>
+        </Button>
 
-        {/* Phase 0C: current user + logout, or a Login CTA when signed out */}
-        <div className="flex items-center gap-2 pl-3 ml-1 border-l border-[#1E3A8A]/50">
-          {agent.isAuthenticated ? (
+        {/* Phase 0C: current user + logout; guests get a "save progress" CTA instead of their generated username */}
+        <div className="flex items-center gap-2 pl-3 ml-1 border-l">
+          {agent.isGuest ? (
+            <Button
+              variant="outline"
+              onClick={onLoginClick}
+              className="rounded-lg border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
+            >
+              <LogIn className="w-4 h-4" />
+              Save Progress
+            </Button>
+          ) : agent.isAuthenticated ? (
             <>
-              <span className="hidden md:inline text-xs text-[#94A3B8]">
+              <span className="hidden md:inline text-xs text-muted-foreground">
                 {agent.currentUser?.username}
               </span>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={agent.logout}
                 title="Log out"
-                className="p-2 rounded-lg text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1E3A8A]/20 transition-colors"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <LogOut className="w-4 h-4" />
-              </button>
+              </Button>
             </>
           ) : (
-            <button
+            <Button
+              variant="outline"
               onClick={onLoginClick}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 hover:bg-[#10B981]/20 transition-colors"
+              className="rounded-lg border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
             >
               <LogIn className="w-4 h-4" />
               Login
-            </button>
+            </Button>
           )}
         </div>
       </div>

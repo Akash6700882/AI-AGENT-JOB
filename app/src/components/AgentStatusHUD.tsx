@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, Globe, Cpu, TrendingUp, Zap } from 'lucide-react';
 
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+
 interface AgentStatusHUDProps {
   agent: any;
 }
@@ -39,6 +41,15 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
     resize();
     window.addEventListener('resize', resize);
 
+    // Canvas 2D can't consume Tailwind classes, so the primary ring/particle
+    // color is read from the same CSS variable the rest of the app themes
+    // off of (--primary), rather than a hardcoded hex duplicating it. Cyan
+    // has no equivalent design token — it's a purely decorative accent for
+    // this particle effect, not a themed UI surface.
+    const primaryHsl = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+    const primaryColor = `hsl(${primaryHsl})`;
+    const decorativeCyan = '#06B6D4';
+
     const particles: any[] = [];
 
     for (let i = 0; i < 40; i++) {
@@ -48,7 +59,7 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
         speed: 0.002 + Math.random() * 0.004,
         size: 1.5 + Math.random() * 2,
         opacity: 0.3 + Math.random() * 0.7,
-        color: Math.random() > 0.7 ? '#10B981' : '#06B6D4',
+        color: Math.random() > 0.7 ? primaryColor : decorativeCyan,
       });
     }
 
@@ -67,7 +78,7 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
       [60, 80, 100].forEach((r, i) => {
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(16,185,129,${0.05 + i * 0.03})`;
+        ctx.strokeStyle = `hsl(${primaryHsl} / ${0.05 + i * 0.03})`;
         ctx.lineWidth = 0.5;
         ctx.stroke();
       });
@@ -122,7 +133,6 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
       icon: Globe,
       label: 'Jobs Scanned',
       value: jobs.length + 1247, // fixed
-      color: '#10B981',
     },
     {
       icon: TrendingUp,
@@ -134,19 +144,16 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
                 jobs.length
             )
           : 72,
-      color: '#10B981',
     },
     {
       icon: Cpu,
       label: 'API Calls',
       value: safeAgent.searching ? '...' : '1.2K',
-      color: '#06B6D4',
     },
     {
       icon: Zap,
       label: 'Success Rate',
       value: '94%',
-      color: '#F59E0B',
     },
   ];
 
@@ -154,61 +161,61 @@ export function AgentStatusHUD({ agent }: AgentStatusHUDProps) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
       {/* LEFT PANEL */}
-      <div className="lg:col-span-1 rounded-xl border bg-[#0A1128]">
-        <div className="p-4 border-b flex items-center gap-2">
-          <Activity className="w-4 h-4 text-green-400" />
-          <span className="text-sm text-gray-400">Agent Core</span>
-        </div>
+      <Card className="lg:col-span-1 py-0 overflow-hidden">
+        <CardHeader className="p-4 border-b flex-row items-center gap-2 space-y-0">
+          <Activity className="w-4 h-4 text-primary" />
+          <span className="text-sm text-muted-foreground">Agent Core</span>
+        </CardHeader>
 
         <div className="relative h-64">
           <canvas ref={canvasRef} className="w-full h-full" />
 
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-green-500/20 border border-green-400 flex items-center justify-center mb-2">
-                <Zap className="text-green-400" />
+              <div className="w-12 h-12 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-2">
+                <Zap className="text-primary" />
               </div>
-              <div className="text-xs text-green-400">ACTIVE</div>
+              <div className="text-xs text-primary">ACTIVE</div>
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* RIGHT PANEL */}
-      <div className="lg:col-span-2 rounded-xl border bg-[#0A1128]">
-        <div className="p-4 border-b flex justify-between">
-          <span className="text-sm text-gray-400">Live Metrics</span>
+      <Card className="lg:col-span-2 py-0 overflow-hidden">
+        <CardHeader className="p-4 border-b flex-row items-center justify-between space-y-0">
+          <span className="text-sm text-muted-foreground">Live Metrics</span>
 
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-muted-foreground">
             {safeAgent.searching ? 'Scanning' : 'Live'}
           </span>
-        </div>
+        </CardHeader>
 
         {/* METRICS */}
-        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
           {metrics.map((m) => {
             const Icon = m.icon;
             return (
               <div key={m.label} className="text-center p-3 border rounded">
                 <Icon className="mx-auto mb-2" />
-                <div className="text-white font-bold">{m.value}</div>
-                <div className="text-xs text-gray-400">{m.label}</div>
+                <div className="font-bold">{m.value}</div>
+                <div className="text-xs text-muted-foreground">{m.label}</div>
               </div>
             );
           })}
-        </div>
+        </CardContent>
 
         {/* LOGS */}
-        <div className="p-4">
-          <div className="bg-black p-3 h-28 overflow-y-auto text-xs">
+        <CardContent className="p-4 pt-0">
+          <div className="bg-background p-3 h-28 overflow-y-auto text-xs">
             {logs.slice(-8).map((log, i) => (
               <div key={i}>▶ {log}</div>
             ))}
 
             {safeAgent.searching && <div>▶ Processing...</div>}
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

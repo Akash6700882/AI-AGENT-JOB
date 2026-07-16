@@ -11,8 +11,9 @@ import { SearchPanel } from '@/components/SearchPanel';
 import { ToolsPanel } from '@/components/ToolsPanel';
 import { Toast } from '@/components/Toast';
 import { LoginForm } from '@/components/LoginForm';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { JobResult } from '@/services/api';
-import { Bot, LogIn } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 type View = 'dashboard' | 'jobs' | 'applications' | 'resume' | 'tools';
 
@@ -23,7 +24,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
-    <div className="flex h-screen w-full bg-[#030712] overflow-hidden">
+    <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Sidebar */}
       <Sidebar currentView={currentView} onViewChange={setCurrentView} agent={agent} />
 
@@ -40,7 +41,7 @@ export default function Home() {
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-8 py-6 scanline">
           {!agent.isAuthenticated ? (
-            <LandingView onLoginClick={() => setShowAuthModal(true)} />
+            <LoadingView />
           ) : (
             <>
               {currentView === 'dashboard' && (
@@ -84,17 +85,16 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Login / Register modal */}
-      {showAuthModal && !agent.isAuthenticated && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowAuthModal(false);
-          }}
-        >
+      {/* Login / Register modal — opt-in, so a guest can upgrade to a real account */}
+      <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
+        <DialogContent className="max-w-sm border-none bg-transparent p-0 shadow-none">
+          <DialogTitle className="sr-only">Sign in or create a CareerPilot account</DialogTitle>
+          <DialogDescription className="sr-only">
+            Sign in, create an account, or reset your password to use CareerPilot.
+          </DialogDescription>
           <LoginForm agent={agent} onClose={() => setShowAuthModal(false)} />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Toast Notification */}
       {agent.toast && (
@@ -108,26 +108,11 @@ export default function Home() {
   );
 }
 
-function LandingView({ onLoginClick }: { onLoginClick: () => void }) {
+function LoadingView() {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center animate-fade-in-up">
-      <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#10B981] to-[#059669] glow-green">
-        <Bot className="h-9 w-9 text-[#030712]" />
-      </div>
-      <h1 className="text-3xl font-bold text-[#F8FAFC] tracking-tight">
-        Welcome to Career<span className="text-gradient-green">Pilot</span>
-      </h1>
-      <p className="mt-3 max-w-md text-sm text-[#94A3B8]">
-        Upload your resume, let the agent scan real job boards, and track every
-        application in one place. Sign in or create a free account to get started.
-      </p>
-      <button
-        onClick={onLoginClick}
-        className="mt-8 flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm bg-[#10B981] text-[#030712] hover:bg-[#34D399] hover:scale-105 active:scale-95 transition-all duration-300 glow-green"
-      >
-        <LogIn className="w-4 h-4" />
-        Login / Create Account
-      </button>
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="mt-4 text-sm text-muted-foreground">Starting your session…</p>
     </div>
   );
 }

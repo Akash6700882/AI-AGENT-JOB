@@ -4,6 +4,7 @@ CareerPilot API - FastAPI backend
 import os
 import re
 import logging
+import secrets
 import traceback
 from datetime import datetime, timedelta
 
@@ -449,6 +450,33 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     user.password_hash = hash_password(req.new_password)
     db.commit()
     return {"success": True}
+
+
+@app.post("/api/auth/guest")
+def guest_login(db: Session = Depends(get_db)):
+    """No-signup entry point: mints a real `users` row (so resume/search/
+    applications work exactly like a registered account) with a random,
+    unguessable identity nobody ever logs into. The frontend calls this
+    automatically on first load so the app is usable with zero clicks;
+    users can still register/log in later to keep their data under a
+    real, memorable account instead of this anonymous one."""
+    suffix = secrets.token_hex(6)
+    user = User(
+        username=f"guest_{suffix}",
+        email=f"guest_{suffix}@guest.careerpilot.local",
+        password_hash=hash_password(secrets.token_urlsafe(32)),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user.id, user.username)
+    return {
+        "success": True,
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"id": user.id, "username": user.username, "email": user.email},
+    }
 
 
 @app.get("/api/auth/me")

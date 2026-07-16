@@ -84,6 +84,18 @@ export function useAgent() {
     return true;
   };
 
+  // No-signup entry: mints an anonymous account server-side so the app is
+  // usable with zero clicks. Registering/logging in later just swaps this
+  // token out for a real one via the same _persistSession path.
+  const guestLogin = async () => {
+    const data = await authRequest("/auth/guest", {});
+    if (!data?.access_token) return false;
+    _persistSession(data);
+    return true;
+  };
+
+  const isGuest = !!currentUser?.username?.startsWith("guest_");
+
   // ===============================
   // ✉️ REGISTRATION (email OTP-gated, 3 steps)
   // ===============================
@@ -371,6 +383,20 @@ export function useAgent() {
   };
 
   // ===============================
+  // 👤 AUTO GUEST LOGIN
+  // Runs once on mount: if there's no saved session at all (first visit,
+  // or after logout), silently create a guest account so the app opens
+  // straight into the dashboard instead of a login wall. A real login/
+  // register later just overwrites this token via _persistSession.
+  // ===============================
+  useEffect(() => {
+    if (!token) {
+      guestLogin();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ===============================
   // 🔄 AUTO LOAD ON START / ON LOGIN
   // ===============================
   useEffect(() => {
@@ -401,10 +427,12 @@ export function useAgent() {
 
     // Auth (Phase 0C)
     isAuthenticated,
+    isGuest,
     currentUser,
     authError,
     authLoading,
     login,
+    guestLogin,
     logout,
     clearAuthError,
     sendRegisterOtp,

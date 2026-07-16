@@ -1,5 +1,7 @@
 import { Target, TrendingUp, BarChart3 } from 'lucide-react';
 
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+
 interface AnalyticsGridProps {
   agent: any;
 }
@@ -19,37 +21,37 @@ export function AnalyticsGrid({ agent }: AnalyticsGridProps) {
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
       {/* Funnel */}
-      <div className="rounded-xl border bg-[#0A1128]">
-        <div className="p-4 border-b flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-green-400" />
-          <span className="text-sm text-gray-400">Pipeline Funnel</span>
-        </div>
-        <div className="p-6">
+      <Card className="py-0 overflow-hidden">
+        <CardHeader className="p-4 border-b flex-row items-center gap-2 space-y-0">
+          <BarChart3 className="w-4 h-4 text-primary" />
+          <span className="text-sm text-muted-foreground">Pipeline Funnel</span>
+        </CardHeader>
+        <CardContent className="p-6">
           <SuccessFunnel agent={safeAgent} />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Daily Target */}
-      <div className="rounded-xl border bg-[#0A1128]">
-        <div className="p-4 border-b flex items-center gap-2">
-          <Target className="w-4 h-4 text-green-400" />
-          <span className="text-sm text-gray-400">Daily Target</span>
-        </div>
-        <div className="p-6 flex justify-center">
+      <Card className="py-0 overflow-hidden">
+        <CardHeader className="p-4 border-b flex-row items-center gap-2 space-y-0">
+          <Target className="w-4 h-4 text-primary" />
+          <span className="text-sm text-muted-foreground">Daily Target</span>
+        </CardHeader>
+        <CardContent className="p-6 flex justify-center">
           <DailyTarget agent={safeAgent} />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Weekly */}
-      <div className="rounded-xl border bg-[#0A1128]">
-        <div className="p-4 border-b flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-green-400" />
-          <span className="text-sm text-gray-400">Weekly Activity</span>
-        </div>
-        <div className="p-6">
+      <Card className="py-0 overflow-hidden">
+        <CardHeader className="p-4 border-b flex-row items-center gap-2 space-y-0">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          <span className="text-sm text-muted-foreground">Weekly Activity</span>
+        </CardHeader>
+        <CardContent className="p-6">
           <WeeklyChart agent={safeAgent} />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
     </div>
   );
@@ -76,19 +78,19 @@ function SuccessFunnel({ agent }: { agent: any }) {
 
         return (
           <div key={stage.label} className="flex items-center gap-3">
-            <div className="w-16 text-xs text-gray-400 text-right">
+            <div className="w-16 text-xs text-muted-foreground text-right">
               {stage.label}
             </div>
 
-            <div className="flex-1 h-8 bg-black rounded">
+            <div className="flex-1 h-8 bg-background rounded">
               <div
-                className="h-full bg-green-500 flex items-center justify-end pr-2"
+                className="h-full bg-primary flex items-center justify-end pr-2"
                 style={{
                   width: `${widthPercent}%`,
                   transitionDelay: `${i * 100}ms`,
                 }}
               >
-                <span className="text-xs text-white">{stage.value}</span>
+                <span className="text-xs text-primary-foreground">{stage.value}</span>
               </div>
             </div>
           </div>
@@ -115,24 +117,25 @@ function DailyTarget({ agent }: { agent: any }) {
     <div className="relative w-40 h-40">
 
       <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-        <circle cx="60" cy="60" r="50" fill="none" stroke="#1E3A8A" strokeWidth="8" />
+        <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" strokeWidth="8" className="text-border" />
         <circle
           cx="60"
           cy="60"
           r="50"
           fill="none"
-          stroke="green"
+          stroke="currentColor"
           strokeWidth="8"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
+          className="text-primary"
         />
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-white text-xl">
+        <div className="text-xl">
           {applied}/{dailyGoal}
         </div>
-        <div className="text-xs text-gray-400">Applied Today</div>
+        <div className="text-xs text-muted-foreground">Applied Today</div>
       </div>
     </div>
   );
@@ -166,18 +169,18 @@ function WeeklyChart({ agent }: { agent: any }) {
           <div className="w-full flex items-end gap-1">
 
             <div
-              className="flex-1 bg-green-500"
+              className="flex-1 bg-primary"
               style={{ height: `${(week.applied / maxVal) * 80}px` }}
             />
 
             <div
-              className="flex-1 bg-yellow-500"
+              className="flex-1 bg-accent"
               style={{ height: `${((week.responses || 0) / maxVal) * 80}px` }}
             />
 
           </div>
 
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-muted-foreground">
             {week.week || `W${i + 1}`}
           </span>
 

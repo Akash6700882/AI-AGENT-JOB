@@ -1,6 +1,10 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, Sparkles, Mail, Phone, MapPin, Code } from 'lucide-react';
 
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+
 interface ResumeUploadProps {
   agent: any;
 }
@@ -72,19 +76,19 @@ export function ResumeUpload({ agent }: ResumeUploadProps) {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Upload Area */}
-      <div className="rounded-xl border border-[#1E3A8A]/50 bg-[#0A1128] card-gradient overflow-hidden">
-        <div className="p-4 border-b border-[#1E3A8A]/30 flex items-center gap-2">
-          <FileText className="w-4 h-4 text-[#10B981]" />
-          <span className="text-sm font-medium text-[#94A3B8]">Resume Upload</span>
+      <Card className="card-gradient overflow-hidden py-0">
+        <div className="p-4 border-b flex items-center gap-2">
+          <FileText className="w-4 h-4 text-primary" />
+          <span className="text-sm font-medium text-muted-foreground">Resume Upload</span>
         </div>
         <div className="p-6">
           {isUploading ? (
             <div className="p-12 text-center animate-pulse">
-              <div className="w-16 h-16 rounded-full bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-[#10B981] animate-spin" />
+              <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-primary animate-spin" />
               </div>
-              <h3 className="text-lg font-semibold text-[#F8FAFC] mb-2">Analyzing Resume...</h3>
-              <p className="text-sm text-[#94A3B8]">Extracting skills and experience with AI</p>
+              <h3 className="text-lg font-semibold mb-2">Analyzing Resume...</h3>
+              <p className="text-sm text-muted-foreground">Extracting skills and experience with AI</p>
             </div>
           ) : !resume ? (
             <div
@@ -93,8 +97,8 @@ export function ResumeUpload({ agent }: ResumeUploadProps) {
               onDrop={handleDrop}
               className={`border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 cursor-pointer ${
                 dragOver
-                  ? 'border-[#10B981] bg-[#10B981]/5'
-                  : 'border-[#1E3A8A]/50 hover:border-[#1E3A8A] bg-[#030712]/30'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/50 hover:border-border bg-background/30'
               }`}
               onClick={() => document.getElementById('resume-input')?.click()}
             >
@@ -105,104 +109,107 @@ export function ResumeUpload({ agent }: ResumeUploadProps) {
                 onChange={handleFileSelect}
                 className="hidden"
               />
-              <div className="w-16 h-16 rounded-full bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-center mx-auto mb-4">
-                <Upload className="w-8 h-8 text-[#10B981]" />
+              <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto mb-4">
+                <Upload className="w-8 h-8 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-[#F8FAFC] mb-2">Drop your resume here</h3>
-              <p className="text-sm text-[#94A3B8] mb-4">or click to browse. Supports PDF, DOCX, and TXT files.</p>
-              <div className="flex items-center justify-center gap-4 text-xs text-[#94A3B8]">
-                <span className="px-3 py-1 rounded-full bg-[#030712] border border-[#1E3A8A]/30">PDF</span>
-                <span className="px-3 py-1 rounded-full bg-[#030712] border border-[#1E3A8A]/30">DOCX</span>
-                <span className="px-3 py-1 rounded-full bg-[#030712] border border-[#1E3A8A]/30">TXT</span>
+              <h3 className="text-lg font-semibold mb-2">Drop your resume here</h3>
+              <p className="text-sm text-muted-foreground mb-4">or click to browse. Supports PDF, DOCX, and TXT files.</p>
+              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                <Badge variant="outline" className="bg-background">PDF</Badge>
+                <Badge variant="outline" className="bg-background">DOCX</Badge>
+                <Badge variant="outline" className="bg-background">TXT</Badge>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-4 p-4 bg-[#030712] rounded-xl border border-[#10B981]/30">
-              <div className="w-12 h-12 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-[#10B981]" />
+            <div className="flex items-center gap-4 p-4 bg-background rounded-xl border border-primary/30">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium text-[#F8FAFC]">
+                <div className="text-sm font-medium">
                   {uploadedFile?.name || 'Resume loaded'}
                 </div>
-                <div className="text-xs text-[#94A3B8]">
+                <div className="text-xs text-muted-foreground">
                   {resume.skills?.length || 0} skills extracted
                 </div>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setResumeData(null);
                   setUploadedFile(null);
                 }}
-                className="px-3 py-1.5 text-xs text-[#94A3B8] hover:text-[#F8FAFC] transition-colors"
+                className="text-muted-foreground hover:text-foreground"
               >
                 Replace
-              </button>
+              </Button>
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Resume Details Grid */}
       {resume && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
           {/* Profile Overview */}
-          <div className="rounded-xl border border-[#1E3A8A]/50 bg-[#0A1128] card-gradient overflow-hidden">
-            <div className="p-4 border-b border-[#1E3A8A]/30 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#10B981]" />
-              <span className="text-sm font-medium text-[#94A3B8]">Profile Overview</span>
+          <Card className="card-gradient overflow-hidden py-0">
+            <div className="p-4 border-b flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-muted-foreground">Profile Overview</span>
             </div>
             <div className="p-4 space-y-3">
-              {resume.name && <div className="text-lg font-semibold text-[#F8FAFC]">{resume.name}</div>}
+              {resume.name && <div className="text-lg font-semibold">{resume.name}</div>}
               <div className="space-y-2">
                 {resume.email && (
-                  <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-                    <Mail className="w-4 h-4 text-[#10B981]" />
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Mail className="w-4 h-4 text-primary" />
                     {resume.email}
                   </div>
                 )}
                 {resume.phone && (
-                  <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-                    <Phone className="w-4 h-4 text-[#10B981]" />
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="w-4 h-4 text-primary" />
                     {resume.phone}
                   </div>
                 )}
                 {resume.location && (
-                  <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-                    <MapPin className="w-4 h-4 text-[#10B981]" />
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="w-4 h-4 text-primary" />
                     {resume.location}
                   </div>
                 )}
               </div>
               {resume.summary && (
-                <div className="mt-4 pt-4 border-t border-[#1E3A8A]/30">
-                  <p className="text-sm text-[#94A3B8] leading-relaxed line-clamp-4">{resume.summary}</p>
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">{resume.summary}</p>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* Skills Section */}
-          <div className="rounded-xl border border-[#1E3A8A]/50 bg-[#0A1128] card-gradient overflow-hidden">
-            <div className="p-4 border-b border-[#1E3A8A]/30 flex items-center gap-2">
-              <Code className="w-4 h-4 text-[#10B981]" />
-              <span className="text-sm font-medium text-[#94A3B8]">
+          <Card className="card-gradient overflow-hidden py-0">
+            <div className="p-4 border-b flex items-center gap-2">
+              <Code className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-muted-foreground">
                 Skills ({resume.skills?.length || 0})
               </span>
             </div>
             <div className="p-4">
               <div className="flex flex-wrap gap-2">
                 {resume.skills?.map((skill: string, idx: number) => (
-                  <span
+                  <Badge
                     key={`${skill}-${idx}`}
-                    className="px-3 py-1.5 bg-[#10B981]/10 border border-[#10B981]/30 text-[#10B981] rounded-lg text-sm"
+                    variant="outline"
+                    className="border-primary/30 bg-primary/10 text-primary text-sm px-3 py-1.5"
                   >
                     {skill}
-                  </span>
-                )) || <p className="text-sm text-[#94A3B8]">No skills detected</p>}
+                  </Badge>
+                )) || <p className="text-sm text-muted-foreground">No skills detected</p>}
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       )}
     </div>
